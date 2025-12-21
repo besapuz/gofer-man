@@ -1,0 +1,3 @@
+test: 
+	@echo "Запуск тестов"
+	@go test -v -cover ./...
