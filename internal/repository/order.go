@@ -33,6 +33,7 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 		"SELECT user_id FROM orders WHERE number = $1", order.Number).Scan(&existingUserID)
 
 	if err == nil {
+		// Заказ уже существует
 		if existingUserID == order.UserID {
 			return ErrOrderExists
 		}
@@ -55,7 +56,7 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 
 // GetOrdersByUserID возвращает список заказов для указанного пользователя
 func (r *OrderRepository) GetOrdersByUserID(ctx context.Context, userID int) ([]*domain.Order, error) {
-	query := `SELECT number, status, accrual, uploaded_at, processed_at 
+	query := `SELECT id, number, status, accrual, uploaded_at, processed_at 
               FROM orders WHERE user_id = $1 
               ORDER BY uploaded_at DESC`
 
@@ -70,6 +71,7 @@ func (r *OrderRepository) GetOrdersByUserID(ctx context.Context, userID int) ([]
 		order := &domain.Order{}
 		var processedAt sql.NullTime
 		err := rows.Scan(
+			&order.ID,
 			&order.Number,
 			&order.Status,
 			&order.Accrual,
@@ -90,7 +92,7 @@ func (r *OrderRepository) GetOrdersByUserID(ctx context.Context, userID int) ([]
 
 // GetUnprocessedOrders возвращает список необработанных заказов
 func (r *OrderRepository) GetUnprocessedOrders(ctx context.Context, limit int) ([]*domain.Order, error) {
-	query := `SELECT id, user_id, number FROM orders 
+	query := `SELECT id, user_id, number, status FROM orders 
               WHERE status IN ('NEW', 'PROCESSING') 
               ORDER BY uploaded_at ASC LIMIT $1`
 
@@ -103,7 +105,7 @@ func (r *OrderRepository) GetUnprocessedOrders(ctx context.Context, limit int) (
 	var orders []*domain.Order
 	for rows.Next() {
 		order := &domain.Order{}
-		err := rows.Scan(&order.ID, &order.UserID, &order.Number)
+		err := rows.Scan(&order.ID, &order.UserID, &order.Number, &order.Status)
 		if err != nil {
 			return nil, fmt.Errorf("scan order: %w", err)
 		}
@@ -124,4 +126,36 @@ func (r *OrderRepository) UpdateOrderAccrual(ctx context.Context, orderID int, s
 		return fmt.Errorf("update order accrual: %w", err)
 	}
 	return nil
+}
+
+// GetOrderByNumber возвращает заказ по номеру
+func (r *OrderRepository) GetOrderByNumber(ctx context.Context, number string) (*domain.Order, error) {
+	var order domain.Order
+	var processedAt sql.NullTime
+
+	query := `SELECT id, user_id, number, status, accrual, uploaded_at, processed_at 
+              FROM orders WHERE number = $1`
+
+	err := r.db.QueryRowContext(ctx, query, number).Scan(
+		&order.ID,
+		&order.UserID,
+		&order.Number,
+		&order.Status,
+		&order.Accrual,
+		&order.UploadedAt,
+		&processedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get order by number: %w", err)
+	}
+
+	if processedAt.Valid {
+		order.ProcessedAt = &processedAt.Time
+	}
+
+	return &order, nil
 }

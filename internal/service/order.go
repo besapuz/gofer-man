@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"strconv"
 
 	"github.com/besapuz/gofer-man/internal/domain"
@@ -34,12 +33,12 @@ func NewOrderService(orderRepo *repository.OrderRepository, balanceRepo *reposit
 func (s *OrderService) UploadOrder(ctx context.Context, userID int, orderNumber string) error {
 	// Валидируем номер заказа
 	if !luhn.Valid(orderNumber) {
-		return errors.New("invalid order number")
+		return fmt.Errorf("invalid order number")
 	}
 
 	// Проверяем, что номер заказа состоит только из цифр
 	if _, err := strconv.ParseInt(orderNumber, 10, 64); err != nil {
-		return errors.New("order number must contain only digits")
+		return fmt.Errorf("invalid order number")
 	}
 
 	// Создаем заказ
@@ -51,8 +50,21 @@ func (s *OrderService) UploadOrder(ctx context.Context, userID int, orderNumber 
 
 	err := s.orderRepo.CreateOrder(ctx, order)
 	if err != nil {
+		// Обрабатываем ошибку существования заказа
 		if errors.Is(err, repository.ErrOrderExists) {
-			return nil // Уже загружен этим пользователем
+			// Проверяем, чей это заказ
+			existingOrder, err := s.orderRepo.GetOrderByNumber(ctx, orderNumber)
+			if err != nil {
+				return fmt.Errorf("get order by number: %w", err)
+			}
+
+			if existingOrder != nil && existingOrder.UserID == userID {
+				// Заказ уже загружен этим пользователем
+				return nil
+			} else {
+				// Заказ загружен другим пользователем
+				return fmt.Errorf("order taken by another user")
+			}
 		}
 		return err
 	}
@@ -72,9 +84,6 @@ func (s *OrderService) GetUserOrders(ctx context.Context, userID int) ([]*domain
 	return orders, nil
 }
 
-// ProcessOrders обрабатывает необработанные заказы
-// Получает информацию о начислениях из внешней системы и обновляет статусы заказов
-// Возвращает ошибку если обработка не удалась
 func (s *OrderService) ProcessOrders(ctx context.Context) error {
 	// Получаем необработанные заказы (ограничиваем количество для одного цикла)
 	orders, err := s.orderRepo.GetUnprocessedOrders(ctx, 100)
@@ -141,25 +150,7 @@ func mapAccrualStatusToInternal(accrualStatus string) string {
 	}
 }
 
-// OrderBelongsToUser проверяет принадлежит ли заказ пользователю
-// Возвращает true если заказ принадлежит пользователю, false в противном случае
-func (s *OrderService) OrderBelongsToUser(ctx context.Context, orderNumber string, userID int) (bool, error) {
-	// В реальной реализации нужно добавить метод в репозиторий
-	// который проверяет принадлежность заказа пользователю
-
-	// Пока временная реализация - проверяем что номер валидный
-	if !luhn.Valid(orderNumber) {
-		return false, errors.New("invalid order number")
-	}
-
-	return true, nil
-}
-
-// GetOrderStatus возвращает текущий статус заказа по его номеру
-func (s *OrderService) GetOrderStatus(ctx context.Context, orderNumber string) (string, error) {
-	// В реальной реализации нужно добавить метод в репозиторий
-	// который возвращает заказ по номеру
-
-	// Пока возвращаем статус по умолчанию
-	return "NEW", nil
+// GetOrderByNumber возвращает заказ по номеру
+func (s *OrderService) GetOrderByNumber(ctx context.Context, orderNumber string) (*domain.Order, error) {
+	return s.orderRepo.GetOrderByNumber(ctx, orderNumber)
 }

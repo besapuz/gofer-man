@@ -36,7 +36,7 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orderNumber := string(body)
+	orderNumber := strings.TrimSpace(string(body))
 	if orderNumber == "" {
 		http.Error(w, "Order number required", http.StatusBadRequest)
 		return
@@ -44,24 +44,37 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 
 	err = h.orderService.UploadOrder(r.Context(), userID, orderNumber)
 	if err != nil {
-		// Проверяем тип ошибки по тексту
+		// Проверяем тип ошибки
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "invalid order number") {
+		switch {
+		case strings.Contains(errMsg, "invalid order number"):
 			http.Error(w, "Invalid order number", http.StatusUnprocessableEntity)
-			return
-		}
-
-		if strings.Contains(errMsg, "order taken by another user") {
+		case strings.Contains(errMsg, "order taken by another user"):
 			http.Error(w, "Order already uploaded by another user", http.StatusConflict)
-			return
+		default:
+			// Если это другая ошибка или ошибки нет (nil)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
-
-		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	// Если ошибки нет - заказ успешно создан
-	w.WriteHeader(http.StatusAccepted)
+	// Если ошибки нет, проверяем был ли заказ создан или уже существовал
+	// Для этого нужно получить заказ и проверить его статус
+	order, err := h.orderService.GetOrderByNumber(r.Context(), orderNumber)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Проверяем, когда был создан заказ
+	// Если только что создан - 202, если уже существовал - 200
+	if order != nil {
+		// Заказ уже существует, возвращаем 200
+		w.WriteHeader(http.StatusOK)
+	} else {
+		// Это не должно происходить, но на всякий случай
+		w.WriteHeader(http.StatusAccepted)
+	}
 }
 
 // GetOrders обрабатывает получение списка заказов пользователя
