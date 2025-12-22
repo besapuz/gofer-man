@@ -148,6 +148,10 @@ func (r *BalanceRepository) GetWithdrawals(ctx context.Context, userID int) ([]*
 		}
 		withdrawals = append(withdrawals, withdrawal)
 	}
+	// Проверяем ошибку итерации
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
 
 	return withdrawals, nil
 }
