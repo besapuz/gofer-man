@@ -49,11 +49,6 @@ func Load() *Config {
 		cfg.LogLevel = envLogLevel
 	}
 
-	// Проверяем обязательные параметры
-	if cfg.JWTSecret == "" {
-		log.Fatal("JWT secret key is required. Set JWT_SECRET environment variable or use -s flag")
-	}
-
 	if cfg.DatabaseURI == "" {
 		log.Fatal("Database URI is required. Set DATABASE_URI environment variable or use -d flag")
 	}
