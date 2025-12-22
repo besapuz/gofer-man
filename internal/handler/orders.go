@@ -42,7 +42,8 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.orderService.UploadOrder(r.Context(), userID, orderNumber)
+	// Получаем флаг — был ли заказ создан впервые
+	created, err := h.orderService.UploadOrder(r.Context(), userID, orderNumber)
 	if err != nil {
 		// Проверяем тип ошибки
 		errMsg := err.Error()
@@ -52,28 +53,16 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		case strings.Contains(errMsg, "order taken by another user"):
 			http.Error(w, "Order already uploaded by another user", http.StatusConflict)
 		default:
-			// Если это другая ошибка или ошибки нет (nil)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	// Если ошибки нет, проверяем был ли заказ создан или уже существовал
-	// Для этого нужно получить заказ и проверить его статус
-	order, err := h.orderService.GetOrderByNumber(r.Context(), orderNumber)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Проверяем, когда был создан заказ
-	// Если только что создан - 202, если уже существовал - 200
-	if order != nil {
-		// Заказ уже существует, возвращаем 200
-		w.WriteHeader(http.StatusOK)
+	// Если заказ был только что создан — 202
+	if created {
+		w.WriteHeader(http.StatusAccepted) // 202
 	} else {
-		// Это не должно происходить, но на всякий случай
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK) // 200
 	}
 }
 

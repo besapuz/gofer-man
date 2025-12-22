@@ -28,17 +28,17 @@ func NewOrderService(orderRepo *repository.OrderRepository, balanceRepo *reposit
 }
 
 // UploadOrder загружает номер заказа от пользователя
-// Проверяет номер с помощью алгоритма Луна и создает запись заказа
-// Возвращает статус обработки заказа и возможную ошибку
-func (s *OrderService) UploadOrder(ctx context.Context, userID int, orderNumber string) error {
+// Возвращает true, если заказ был создан впервые, false если уже существовал
+// И ошибку, если произошла ошибка валидации или доступа
+func (s *OrderService) UploadOrder(ctx context.Context, userID int, orderNumber string) (bool, error) {
 	// Валидируем номер заказа
 	if !luhn.Valid(orderNumber) {
-		return fmt.Errorf("invalid order number")
+		return false, fmt.Errorf("invalid order number")
 	}
 
 	// Проверяем, что номер заказа состоит только из цифр
 	if _, err := strconv.ParseInt(orderNumber, 10, 64); err != nil {
-		return fmt.Errorf("invalid order number")
+		return false, fmt.Errorf("invalid order number")
 	}
 
 	// Создаем заказ
@@ -52,24 +52,22 @@ func (s *OrderService) UploadOrder(ctx context.Context, userID int, orderNumber 
 	if err != nil {
 		// Обрабатываем ошибку существования заказа
 		if errors.Is(err, repository.ErrOrderExists) {
-			// Проверяем, чей это заказ
 			existingOrder, err := s.orderRepo.GetOrderByNumber(ctx, orderNumber)
 			if err != nil {
-				return fmt.Errorf("get order by number: %w", err)
+				return false, fmt.Errorf("get order by number: %w", err)
 			}
-
 			if existingOrder != nil && existingOrder.UserID == userID {
-				// Заказ уже загружен этим пользователем
-				return nil
+				// Заказ уже загружен этим пользователем — не новый
+				return false, nil
 			} else {
-				// Заказ загружен другим пользователем
-				return fmt.Errorf("order taken by another user")
+				return false, fmt.Errorf("order taken by another user")
 			}
 		}
-		return err
+		return false, err
 	}
 
-	return nil
+	// Успешно создан — это новый заказ
+	return true, nil
 }
 
 // GetUserOrders возвращает список заказов пользователя
