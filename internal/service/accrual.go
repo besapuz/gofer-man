@@ -10,6 +10,11 @@ import (
 	"github.com/besapuz/gofer-man/internal/domain"
 )
 
+// AccrualServiceInterface описывает поведение клиента начислений
+type AccrualServiceInterface interface {
+	GetAccrual(ctx context.Context, orderNumber string) (*domain.AccrualResponse, error)
+}
+
 // AccrualService предоставляет клиент для взаимодействия с внешней системой начислений
 type AccrualService struct {
 	baseURL    string

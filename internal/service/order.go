@@ -13,13 +13,17 @@ import (
 
 // OrderService предоставляет бизнес-логику для работы с заказами
 type OrderService struct {
-	orderRepo   *repository.OrderRepository
-	balanceRepo *repository.BalanceRepository
-	accrual     *AccrualService
+	orderRepo   repository.OrderRepositoryInterface
+	balanceRepo repository.BalanceRepositoryInterface
+	accrual     AccrualServiceInterface
 }
 
 // NewOrderService создает новый экземпляр OrderService
-func NewOrderService(orderRepo *repository.OrderRepository, balanceRepo *repository.BalanceRepository, accrual *AccrualService) *OrderService {
+func NewOrderService(
+	orderRepo repository.OrderRepositoryInterface,
+	balanceRepo repository.BalanceRepositoryInterface,
+	accrual AccrualServiceInterface,
+) *OrderService {
 	return &OrderService{
 		orderRepo:   orderRepo,
 		balanceRepo: balanceRepo,
