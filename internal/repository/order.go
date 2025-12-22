@@ -86,6 +86,10 @@ func (r *OrderRepository) GetOrdersByUserID(ctx context.Context, userID int) ([]
 		}
 		orders = append(orders, order)
 	}
+	// Проверяем, не произошла ли ошибка при итерации
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
 
 	return orders, nil
 }
@@ -110,6 +114,10 @@ func (r *OrderRepository) GetUnprocessedOrders(ctx context.Context, limit int) (
 			return nil, fmt.Errorf("scan order: %w", err)
 		}
 		orders = append(orders, order)
+	}
+	// Проверяем ошибку итерации
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
 	}
 
 	return orders, nil
