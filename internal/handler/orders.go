@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/besapuz/gofer-man/internal/service"
 )
@@ -43,19 +44,23 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 
 	err = h.orderService.UploadOrder(r.Context(), userID, orderNumber)
 	if err != nil {
-		switch err.Error() {
-		case "invalid order number":
+		// Проверяем тип ошибки по тексту
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "invalid order number") {
 			http.Error(w, "Invalid order number", http.StatusUnprocessableEntity)
-		case "order taken by another user":
-			http.Error(w, "Order already uploaded by another user", http.StatusConflict)
-		case "order already exists":
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
+
+		if strings.Contains(errMsg, "order taken by another user") {
+			http.Error(w, "Order already uploaded by another user", http.StatusConflict)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
+	// Если ошибки нет - заказ успешно создан
 	w.WriteHeader(http.StatusAccepted)
 }
 
