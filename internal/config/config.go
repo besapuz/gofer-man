@@ -23,7 +23,7 @@ func Load() *Config {
 	// Определяем флаги командной строки
 	flag.StringVar(&cfg.RunAddress, "a", "localhost:8080", "Address and port to run server")
 	flag.StringVar(&cfg.DatabaseURI, "d", "", "Database connection URI")
-	flag.StringVar(&cfg.AccrualSystemAddress, "r", "http://localhost:8081", "Accrual system address")
+	flag.StringVar(&cfg.AccrualSystemAddress, "r", "localhost:8081", "Accrual system address")
 	flag.StringVar(&cfg.JWTSecret, "s", "", "JWT secret key")
 	flag.StringVar(&cfg.LogLevel, "l", "info", "Log level (debug, info, warn, error)")
 	flag.Parse()
