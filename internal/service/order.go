@@ -8,7 +8,9 @@ import (
 
 	"github.com/besapuz/gofer-man/internal/domain"
 	"github.com/besapuz/gofer-man/internal/repository"
+	"github.com/besapuz/gofer-man/pkg/logger"
 	"github.com/besapuz/gofer-man/pkg/luhn"
+	"go.uber.org/zap"
 )
 
 // OrderService предоставляет бизнес-логику для работы с заказами
@@ -100,7 +102,10 @@ func (s *OrderService) ProcessOrders(ctx context.Context) error {
 			err = s.orderRepo.UpdateOrderAccrual(ctx, order.ID, "PROCESSING", 0)
 			if err != nil {
 				// Логируем ошибку и продолжаем обработку других заказов
-				fmt.Printf("Error updating order status to PROCESSING: %v\n", err)
+				logger.Error("Error updating order status to PROCESSING",
+					zap.Int("order_id", order.ID),
+					zap.Error(err),
+				)
 				continue
 			}
 		}
@@ -109,7 +114,10 @@ func (s *OrderService) ProcessOrders(ctx context.Context) error {
 		accrualResp, err := s.accrual.GetAccrual(ctx, order.Number)
 		if err != nil {
 			// Если превышен лимит запросов или временная ошибка, оставляем как PROCESSING
-			fmt.Printf("Error getting accrual for order %s: %v\n", order.Number, err)
+			logger.Warn("Error getting accrual for order",
+				zap.String("order_number", order.Number),
+				zap.Error(err),
+			)
 			continue
 		}
 
@@ -120,7 +128,11 @@ func (s *OrderService) ProcessOrders(ctx context.Context) error {
 		if internalStatus == "PROCESSED" && accrualResp.Accrual > 0 {
 			err = s.balanceRepo.AddAccrual(ctx, order.UserID, accrualResp.Accrual)
 			if err != nil {
-				fmt.Printf("Error adding accrual to balance for user %d: %v\n", order.UserID, err)
+				logger.Error("Error adding accrual to balance",
+					zap.Int("user_id", order.UserID),
+					zap.Float64("accrual", accrualResp.Accrual),
+					zap.Error(err),
+				)
 				// Продолжаем обновлять статус заказа даже если начисление не удалось
 			}
 		}
@@ -128,7 +140,12 @@ func (s *OrderService) ProcessOrders(ctx context.Context) error {
 		// Обновляем статус заказа и начисление
 		err = s.orderRepo.UpdateOrderAccrual(ctx, order.ID, internalStatus, accrualResp.Accrual)
 		if err != nil {
-			fmt.Printf("Error updating order accrual for order %d: %v\n", order.ID, err)
+			logger.Error("Error updating order accrual",
+				zap.Int("order_id", order.ID),
+				zap.String("status", internalStatus),
+				zap.Float64("accrual", accrualResp.Accrual),
+				zap.Error(err),
+			)
 			continue
 		}
 	}

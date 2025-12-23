@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/besapuz/gofer-man/internal/domain"
@@ -42,7 +43,7 @@ func (r *UserRepository) GetUserByLogin(ctx context.Context, login string) (*dom
 		&user.CreatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("get user by login: %w", err)
@@ -61,7 +62,7 @@ func (r *UserRepository) GetUserByID(ctx context.Context, id int) (*domain.User,
 		&user.CreatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("get user by id: %w", err)

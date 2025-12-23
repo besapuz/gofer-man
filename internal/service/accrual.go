@@ -37,38 +37,55 @@ func NewAccrualService(baseURL string) *AccrualService {
 // Возвращает информацию о статусе обработки и начисленных баллах
 func (s *AccrualService) GetAccrual(ctx context.Context, orderNumber string) (*domain.AccrualResponse, error) {
 	url := fmt.Sprintf("%s/api/orders/%s", s.baseURL, orderNumber)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		var accrualResp domain.AccrualResponse
-		if err := json.NewDecoder(resp.Body).Decode(&accrualResp); err != nil {
+	maxRetry := 5
+	for attempt := 0; attempt < maxRetry; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
 			return nil, err
 		}
-		return &accrualResp, nil
 
-	case http.StatusNoContent:
-		return &domain.AccrualResponse{
-			Order:  orderNumber,
-			Status: "REGISTERED",
-		}, nil
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
 
-	case http.StatusTooManyRequests:
-		// Ждем и повторяем запрос
-		time.Sleep(s.retryAfter)
-		return s.GetAccrual(ctx, orderNumber)
+		var result *domain.AccrualResponse
+		var shouldRetry bool
 
-	default:
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var accrualResp domain.AccrualResponse
+			if err := json.NewDecoder(resp.Body).Decode(&accrualResp); err != nil {
+				resp.Body.Close()
+				return nil, err
+			}
+			result = &accrualResp
+		case http.StatusNoContent:
+			result = &domain.AccrualResponse{
+				Order:  orderNumber,
+				Status: "REGISTERED",
+			}
+		case http.StatusTooManyRequests:
+			shouldRetry = true
+		default:
+			resp.Body.Close()
+			return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		}
+
+		resp.Body.Close()
+
+		// Если результат получен и повтор не нужен — возвращаем
+		if !shouldRetry {
+			return result, nil
+		}
+
+		// Ждём перед повтором
+		select {
+		case <-time.After(s.retryAfter):
+			// продолжаем цикл
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
+	return nil, fmt.Errorf("превышено количество попыток получения данных из системы начислений")
 }
