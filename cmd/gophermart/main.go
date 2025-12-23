@@ -3,9 +3,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -110,7 +114,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go processOrders(ctx, orderService)
+	var wg sync.WaitGroup
+
+	// Запускаем обработчик заказов в фоновом режиме
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		processOrders(ctx, orderService)
+	}()
 
 	// Настраиваем HTTP сервер
 	server := &http.Server{
@@ -120,6 +131,8 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+
+	shutdownComplete := make(chan struct{})
 
 	// Настраиваем graceful shutdown
 	go func() {
@@ -136,6 +149,11 @@ func main() {
 			logger.Error("Server shutdown error", zap.Error(err))
 		}
 		cancel()
+
+		wg.Wait()
+
+		logger.Info("All background goroutines stopped")
+		close(shutdownComplete)
 	}()
 
 	// Запускаем сервер
@@ -143,7 +161,7 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatal("Server failed to start", zap.Error(err))
 	}
-
+	<-shutdownComplete
 	logger.Info("Server stopped gracefully")
 }
 
@@ -170,7 +188,35 @@ func processOrders(ctx context.Context, orderService *service.OrderService) {
 
 // maskPassword маскирует пароль в строке подключения к БД для безопасного логирования
 func maskPassword(connectionString string) string {
-	// Простая маскировка пароля в URI
-	// В реальном приложении можно использовать более сложную логику
-	return connectionString
+	if strings.Contains(connectionString, "://") {
+		parsed, err := url.Parse(connectionString)
+		if err == nil {
+			// Если есть пароль, маскируем его
+			if parsed.User != nil {
+				if _, hasPassword := parsed.User.Password(); hasPassword {
+					maskedUserInfo := fmt.Sprintf("%s:****", parsed.User.Username())
+					parsed.User = url.UserPassword(maskedUserInfo, "")
+					return parsed.String()
+				}
+			}
+		}
+	}
+	if strings.Contains(connectionString, "password=") {
+		start := strings.Index(connectionString, "password=")
+		if start != -1 {
+			start += 9 // длина "password="
+			end := strings.Index(connectionString[start:], " ")
+			if end == -1 {
+				end = len(connectionString)
+			} else {
+				end += start
+			}
+			return connectionString[:start] + "****" + connectionString[end:]
+		}
+	}
+	if len(connectionString) > 0 {
+		return "[connection string with hidden password]"
+	}
+
+	return "[empty connection string]"
 }

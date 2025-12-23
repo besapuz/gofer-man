@@ -7,6 +7,11 @@ import (
 	"time"
 
 	"github.com/besapuz/gofer-man/internal/domain"
+	"github.com/lib/pq"
+)
+
+const (
+	pgUniqueViolationCode = "23505"
 )
 
 // OrderRepository предоставляет методы доступа к данным для сущностей заказов
@@ -27,30 +32,27 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 	}
 	defer tx.Rollback()
 
-	// Проверяем, существует ли уже заказ с таким номером
-	var existingUserID int
-	err = tx.QueryRowContext(ctx,
-		"SELECT user_id FROM orders WHERE number = $1", order.Number).Scan(&existingUserID)
-
-	if err == nil {
-		// Заказ уже существует
-		if existingUserID == order.UserID {
-			return ErrOrderExists
-		}
-		return fmt.Errorf("order taken by another user")
-	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("check order existence: %w", err)
-	}
-
-	// Создаем заказ
-	query := `INSERT INTO orders (user_id, number, status) VALUES ($1, $2, $3) 
-              RETURNING id, uploaded_at`
+	query := `INSERT INTO orders (user_id, number, status) VALUES($1, $2, $3) RETURNING id, uploaded_at`
 	err = tx.QueryRowContext(ctx, query, order.UserID, order.Number, order.Status).
 		Scan(&order.ID, &order.UploadedAt)
+
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			if pqErr.Code == pgUniqueViolationCode {
+				var existingUserID int
+				err = tx.QueryRowContext(ctx, "SELECT user_id FROM orders WHERE number = $1", order.Number).
+					Scan(&existingUserID)
+				if err != nil {
+					return fmt.Errorf("check existing order: %w", err)
+				}
+				if existingUserID == order.UserID {
+					return ErrOrderExists
+				}
+				return fmt.Errorf("order taken by another user")
+			}
+		}
 		return fmt.Errorf("insert order: %w", err)
 	}
-
 	return tx.Commit()
 }
 
