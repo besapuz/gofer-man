@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,7 +25,6 @@ func NewOrderRepository(db *sql.DB) *OrderRepository {
 	return &OrderRepository{db: db}
 }
 
-// CreateOrder создает новый заказ в базе данных
 func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -32,28 +32,33 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 	}
 	defer tx.Rollback()
 
-	query := `INSERT INTO orders (user_id, number, status) VALUES($1, $2, $3) RETURNING id, uploaded_at`
+	query := `INSERT INTO orders (user_id, number, status) VALUES ($1, $2, $3) 
+              RETURNING id, uploaded_at`
 	err = tx.QueryRowContext(ctx, query, order.UserID, order.Number, order.Status).
 		Scan(&order.ID, &order.UploadedAt)
 
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
-			if pqErr.Code == pgUniqueViolationCode {
-				var existingUserID int
-				err = tx.QueryRowContext(ctx, "SELECT user_id FROM orders WHERE number = $1", order.Number).
-					Scan(&existingUserID)
-				if err != nil {
-					return fmt.Errorf("check existing order: %w", err)
-				}
-				if existingUserID == order.UserID {
-					return ErrOrderExists
-				}
-				return fmt.Errorf("order taken by another user")
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			var existingUserID int
+			err := tx.QueryRowContext(ctx, "SELECT user_id FROM orders WHERE number = $1", order.Number).
+				Scan(&existingUserID)
+			if err != nil {
+				return fmt.Errorf("check owner: %w", err)
 			}
+			if existingUserID == order.UserID {
+				return ErrOrderExists
+			}
+			return ErrOrderTakenByOther
 		}
 		return fmt.Errorf("insert order: %w", err)
 	}
-	return tx.Commit()
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 // GetOrdersByUserID возвращает список заказов для указанного пользователя

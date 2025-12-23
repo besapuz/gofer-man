@@ -23,6 +23,9 @@ var (
 
 	// ErrInsufficientFunds указывает, что у пользователя недостаточно средств для списания
 	ErrInsufficientFunds = errors.New("insufficient funds")
+
+	// ErrOrderTakenByOther указывает, что заказ уже взят другим пользователем
+	ErrOrderTakenByOther = errors.New("order taken by another user")
 )
 
 // OrderRepositoryInterface описывает поведение репозитория заказов

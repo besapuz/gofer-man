@@ -2,10 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/besapuz/gofer-man/internal/repository"
 	"github.com/besapuz/gofer-man/internal/service"
 )
 
@@ -45,12 +47,10 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 	// Получаем флаг — был ли заказ создан впервые
 	created, err := h.orderService.UploadOrder(r.Context(), userID, orderNumber)
 	if err != nil {
-		// Проверяем тип ошибки
-		errMsg := err.Error()
 		switch {
-		case strings.Contains(errMsg, "invalid order number"):
+		case strings.Contains(err.Error(), "invalid order number"):
 			http.Error(w, "Invalid order number", http.StatusUnprocessableEntity)
-		case strings.Contains(errMsg, "order taken by another user"):
+		case errors.Is(err, repository.ErrOrderTakenByOther):
 			http.Error(w, "Order already uploaded by another user", http.StatusConflict)
 		default:
 			http.Error(w, "Internal server error", http.StatusInternalServerError)

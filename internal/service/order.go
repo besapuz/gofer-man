@@ -42,12 +42,10 @@ func (s *OrderService) UploadOrder(ctx context.Context, userID int, orderNumber 
 		return false, fmt.Errorf("invalid order number")
 	}
 
-	// Проверяем, что номер заказа состоит только из цифр
 	if _, err := strconv.ParseInt(orderNumber, 10, 64); err != nil {
 		return false, fmt.Errorf("invalid order number")
 	}
 
-	// Создаем заказ
 	order := &domain.Order{
 		UserID: userID,
 		Number: orderNumber,
@@ -56,24 +54,22 @@ func (s *OrderService) UploadOrder(ctx context.Context, userID int, orderNumber 
 
 	err := s.orderRepo.CreateOrder(ctx, order)
 	if err != nil {
-		// Обрабатываем ошибку существования заказа
+		// Заказ уже загружен этим пользователем
 		if errors.Is(err, repository.ErrOrderExists) {
-			existingOrder, err := s.orderRepo.GetOrderByNumber(ctx, orderNumber)
-			if err != nil {
-				return false, fmt.Errorf("get order by number: %w", err)
-			}
-			if existingOrder != nil && existingOrder.UserID == userID {
-				// Заказ уже загружен этим пользователем — не новый
-				return false, nil
-			} else {
-				return false, fmt.Errorf("order taken by another user")
-			}
+			return false, nil // 200
 		}
-		return false, err
+
+		// Заказ уже загружен другим пользователем
+		if errors.Is(err, repository.ErrOrderTakenByOther) {
+			return false, err // 409
+		}
+
+		// Все остальные ошибки (БД и т.п.)
+		return false, fmt.Errorf("create order: %w", err)
 	}
 
-	// Успешно создан — это новый заказ
-	return true, nil
+	// Успешно создан
+	return true, nil // 202
 }
 
 // GetUserOrders возвращает список заказов пользователя
