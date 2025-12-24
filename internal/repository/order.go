@@ -39,12 +39,16 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if errors.As(err, &pqErr) && pqErr.Code == pgUniqueViolationCode {
+			// ВНЕШНИЙ SELECT — не в транзакции!
 			var existingUserID int
-			err := tx.QueryRowContext(ctx, "SELECT user_id FROM orders WHERE number = $1", order.Number).
+			err := r.db.QueryRowContext(ctx, "SELECT user_id FROM orders WHERE number = $1", order.Number).
 				Scan(&existingUserID)
 			if err != nil {
-				return fmt.Errorf("check owner: %w", err)
+				if err == sql.ErrNoRows {
+					return fmt.Errorf("order number exists but not found in DB — possible inconsistency")
+				}
+				return fmt.Errorf("failed to check existing order: %w", err)
 			}
 			if existingUserID == order.UserID {
 				return ErrOrderExists
